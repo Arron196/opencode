@@ -199,6 +199,58 @@ describe("OpenAI-compatible Chat route", () => {
     }),
   )
 
+  it.effect("preserves DeepSeek reasoning_content on assistant tool-call continuation", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare(
+        LLM.request({
+          id: "req_deepseek_reasoning_tool_continuation",
+          model,
+          tools: [
+            {
+              name: "lookup",
+              description: "Lookup data",
+              inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+            },
+          ],
+          messages: [
+            Message.user("What is the weather?"),
+            Message.make({
+              role: "assistant",
+              content: [ToolCallPart.make({ id: "call_1", name: "lookup", input: { query: "weather" } })],
+              native: {
+                providerOptions: {
+                  openaiCompatible: {
+                    reasoning_content: "I should call lookup before answering.",
+                  },
+                },
+              },
+            }),
+            Message.tool({ id: "call_1", name: "lookup", result: { forecast: "sunny" } }),
+          ],
+        }),
+      )
+
+      expect(prepared.body).toMatchObject({
+        messages: [
+          { role: "user", content: "What is the weather?" },
+          {
+            role: "assistant",
+            content: null,
+            reasoning_content: "I should call lookup before answering.",
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: { name: "lookup", arguments: '{"query":"weather"}' },
+              },
+            ],
+          },
+          { role: "tool", tool_call_id: "call_1", content: '{"forecast":"sunny"}' },
+        ],
+      })
+    }),
+  )
+
   it.effect("posts to the configured compatible endpoint and parses text usage", () =>
     Effect.gen(function* () {
       const response = yield* LLMClient.generate(request).pipe(

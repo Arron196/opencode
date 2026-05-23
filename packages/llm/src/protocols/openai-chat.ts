@@ -185,8 +185,18 @@ const lowerToolCall = (part: ToolCallPart): OpenAIChatAssistantToolCall => ({
   },
 })
 
-const openAICompatibleReasoningContent = (native: unknown) =>
-  isRecord(native) && typeof native.reasoning_content === "string" ? native.reasoning_content : undefined
+const openAICompatibleReasoningContent = (message: OpenAIChatRequestMessage) => {
+  const native = message.native?.openaiCompatible
+  if (isRecord(native) && typeof native.reasoning_content === "string") return native.reasoning_content
+  const providerOptions = message.native?.providerOptions
+  if (
+    isRecord(providerOptions) &&
+    isRecord(providerOptions.openaiCompatible) &&
+    typeof providerOptions.openaiCompatible.reasoning_content === "string"
+  )
+    return providerOptions.openaiCompatible.reasoning_content
+  return undefined
+}
 
 const lowerUserMessage = Effect.fn("OpenAIChat.lowerUserMessage")(function* (message: OpenAIChatRequestMessage) {
   const content: TextPart[] = []
@@ -219,7 +229,7 @@ const lowerAssistantMessage = Effect.fn("OpenAIChat.lowerAssistantMessage")(func
     role: "assistant" as const,
     content: content.length === 0 ? null : ProviderShared.joinText(content),
     tool_calls: toolCalls.length === 0 ? undefined : toolCalls,
-    reasoning_content: openAICompatibleReasoningContent(message.native?.openaiCompatible),
+    reasoning_content: openAICompatibleReasoningContent(message),
   }
 })
 
