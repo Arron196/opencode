@@ -84,6 +84,58 @@ describe("Anthropic Messages route", () => {
     }),
   )
 
+  it.effect("preserves DeepSeek Anthropic reasoning on assistant tool-call continuation", () =>
+    Effect.gen(function* () {
+      const prepared = yield* LLMClient.prepare<AnthropicMessages.AnthropicMessagesBody>(
+        LLM.request({
+          id: "req_deepseek_anthropic_reasoning_tool_continuation",
+          model,
+          tools: [
+            {
+              name: "lookup",
+              description: "Lookup data",
+              inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+            },
+          ],
+          messages: [
+            Message.user("What is the weather?"),
+            Message.assistant([
+              {
+                type: "reasoning",
+                text: "I should call lookup before answering.",
+                providerMetadata: { anthropic: { signature: "sig_deepseek_1" } },
+              },
+              ToolCallPart.make({ id: "call_1", name: "lookup", input: { query: "weather" } }),
+            ]),
+            Message.tool({ id: "call_1", name: "lookup", result: { forecast: "sunny" } }),
+          ],
+          cache: "none",
+        }),
+      )
+
+      expect(prepared.body).toMatchObject({
+        messages: [
+          { role: "user", content: [{ type: "text", text: "What is the weather?" }] },
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "thinking",
+                thinking: "I should call lookup before answering.",
+                signature: "sig_deepseek_1",
+              },
+              { type: "tool_use", id: "call_1", name: "lookup", input: { query: "weather" } },
+            ],
+          },
+          {
+            role: "user",
+            content: [{ type: "tool_result", tool_use_id: "call_1", content: '{"forecast":"sunny"}' }],
+          },
+        ],
+      })
+    }),
+  )
+
   // Regression: screenshot/read tool results must stay structured so base64
   // image data is not JSON-stringified into `tool_result.content`.
   it.effect("lowers image tool-result content as structured image blocks", () =>
